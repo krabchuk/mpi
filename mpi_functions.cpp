@@ -8,6 +8,8 @@
 #include "head.h"
 #include "mpi_functions.h"
 
+
+
 void
 main_block_reduce (double *main_block_norm, int *main_block_index, int p, int &main_block)
 {
