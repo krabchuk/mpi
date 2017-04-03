@@ -9,6 +9,9 @@
 #include "head.h"
 #include "mpi_functions.h"
 
+
+
+
 int
 main (int argc, char *argv[])
 {
