@@ -12,6 +12,7 @@
 int
 main (int argc, char *argv[])
 {
+  //kekek
   //char *filename;                     //Name of data file
   int n;                              // Size of matrix
   int m;                              // Size of block
