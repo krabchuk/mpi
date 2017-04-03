@@ -116,8 +116,8 @@ main (int argc, char *argv[])
     }
 
 
-  k = n / m;
   s = n % m;
+  k = n / m;
 
   if (s != 0)
     {
