@@ -357,8 +357,8 @@ matrix_mult_mpi (double *a, double *b, double *c, int n, int m, int p, int my_ra
   delete c_tmp;
 }
 
-int
-matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_rank, int max_columns)
+void
+matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_rank, int max_columns, int &error)
 {
   FILE *fp = fopen (filename, "r");
 
@@ -396,86 +396,133 @@ matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_ra
 
   if (!fp)
     {
-      printf ("Cant open file %s\n", filename);
-      return -1;
+      if (my_rank == 0)
+        printf ("Cant open file %s\n", filename);
+      error = 1;
+      return;
     }
 
   if (my_rank == p - 1)
     {
       if (s != 0)
         {
-
-
           for (int i = 0; i < k; i++)
             {
               // Считываем по блочным строчкам
               memset (buf, 0, n * m * sizeof (double));
 
-              for (int pos_i = 0; pos_i < m; pos_i++)
+              if (error == 0)
                 {
-                  for (int pos_j = 0; pos_j < n; pos_j++)
+                  for (int pos_i = 0; pos_i < m; pos_i++)
                     {
-                      if (fscanf (fp, "%lf", buf + pos_i + pos_j * m) != 1)
+                      for (int pos_j = 0; pos_j < n; pos_j++)
                         {
-                          printf ("Reading error %d %d\n", pos_i, pos_j);
+                          if (fscanf (fp, "%lf", buf + pos_i + pos_j * m) != 1)
+                            {
+                              printf ("Reading error in block %d %d\n", i, pos_j / m);
+                              error = 1;
+                              break;
+                            }
                         }
+                      if (error)
+                        break;
                     }
                 }
 
-              for (int pos = 0; pos < k + 1; pos++)
+              for (int pos = 0; pos < k; pos++)
                 {
                   if (pos % p == p - 1)
                     {
                       // Себе не отправляем, а прост копируем
-                      copy_massive (a + i * m * m + (pos / p) * (k + 1) * m * m, buf + pos * m * m, m * m);
+                      copy_massive (a + i * m * m + (pos / p) * n * m, buf + pos * m * m, m * m);
                     }
                   else
                     {
                       MPI_Send (buf + pos * m * m, m * m, MPI_DOUBLE, pos % p, 0, MPI_COMM_WORLD);
                     }
                 }
+
+              if (k % p == p - 1)
+                {
+                  // Себе не отправляем, а прост копируем
+                  copy_massive (a + i * m * s + (k / p) * n * m, buf + k * m * m, m * s);
+                }
+              else
+                {
+                  MPI_Send (buf + k * m * m, m * s, MPI_DOUBLE, k % p, 0, MPI_COMM_WORLD);
+                }
+
             }
 
           memset (buf, 0, n * m * sizeof (double));
 
           // Считываем последнюю строчку
-          for (int pos_i = 0; pos_i < s; pos_i++)
+
+          if (error == 0)
             {
-              for (int pos_j = 0; pos_j < n; pos_j++)
+              for (int pos_i = 0; pos_i < s; pos_i++)
                 {
-                  if (fscanf (fp, "%lf", buf + pos_i + pos_j * m) != 1)
+                  for (int pos_j = 0; pos_j < n; pos_j++)
                     {
-                      printf ("Reading error %d %d\n", pos_i, pos_j);
+                      if (fscanf (fp, "%lf", buf + pos_i + pos_j * s) != 1)
+                        {
+                          printf ("Reading error in block %d %d\n", k, pos_j / m);
+                          error = 1;
+                          break;
+                        }
                     }
+                  if (error)
+                    break;
                 }
             }
 
 
-          for (int pos = 0; pos < k + 1; pos++)
+          for (int pos = 0; pos < k; pos++)
             {
               if (pos % p == p - 1)
                 {
                   // Себе не отправляем, а прост копируем
-                  copy_massive (a + k * m * m + (pos / p) * (k + 1) * m * m, buf + pos * m * m, m * m);
+                  copy_massive (a + k * m * m + (pos / p) * n * m, buf + pos * m * s, s * m);
                 }
               else
                 {
-                  MPI_Send (buf + pos * m * m, m * m, MPI_DOUBLE, pos % p, 0, MPI_COMM_WORLD);
+                  MPI_Send (buf + pos * s * m, s * m, MPI_DOUBLE, pos % p, 0, MPI_COMM_WORLD);
                 }
             }
 
+          if (k % p == p - 1)
+            {
+              // Себе не отправляем, а прост копируем
+              copy_massive (a + k * m * s + (k / p) * n * m, buf + k * m * s, s * s);
+            }
+          else
+            {
+              MPI_Send (buf + k * m * s, s * s, MPI_DOUBLE, k % p, 0, MPI_COMM_WORLD);
+            }
+
         }
-      else
+      else  // s == 0
         {
           for (int i = 0; i < k; i++)
             {
               // Считываем по блочным строчкам
+              memset (buf, 0, n * m * sizeof (double));
 
-              for (int pos_i = 0; pos_i < m; pos_i++)
+              if (error == 0)
                 {
-                  for (int pos_j = 0; pos_j < n; pos_j++)
+                  for (int pos_i = 0; pos_i < m; pos_i++)
                     {
-                      fscanf (fp, "%lf", buf + pos_i + pos_j * m);
+                      for (int pos_j = 0; pos_j < n; pos_j++)
+                        {
+                          if (fscanf (fp, "%lf", buf + pos_i + pos_j * m) != 1)
+                            {
+                              printf ("Reading error in block %d %d\n", i, pos_j / m);
+                              error = 1;
+                              break;
+                            }
+                        }
+                      if (error)
+                        break;
                     }
                 }
 
@@ -493,24 +540,61 @@ matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_ra
                 }
             }
         }
-
-
     }
-  else
+  else    // my_rank != p - 1
     {
       if (s != 0)
         {
-          for (int i = 0; i < k + 1; i++)
+          for (int i = 0; i < k; i++)
             {
+              if (my_rank == k % p)
+                {
+                  // Поток с крайним столбцом
+                  // Цикл по строчкам
+                  for (int columns = 0; columns < max_columns - 1; columns++)
+                    {
+                      // Цикл по столбцам (они не рядом, передавать будем по отдельности)
+                      MPI_Recv (a + columns * n * m + i * m * m, m * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                    }
+                  MPI_Recv (a + (max_columns - 1) * n * m + i * m * s, m * s, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                }
+              else
+                {
+                  // Поток без крайнего столбца
+                  // Цикл по строчкам
+                  for (int columns = 0; columns < max_columns; columns++)
+                    {
+                      // Цикл по столбцам (они не рядом, передавать будем по отдельности)
+                      MPI_Recv (a + columns * n * m + i * m * m, m * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                    }
+                }
+
+            }
+
+          // Последняя строчка
+          if (my_rank == k % p)
+            {
+              // Поток с крайним столбцом
+              // Цикл по строчкам
+              for (int columns = 0; columns < max_columns - 1; columns++)
+                {
+                  // Цикл по столбцам (они не рядом, передавать будем по отдельности)
+                  MPI_Recv (a + columns * n * m + k * m * m, s * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                }
+              MPI_Recv (a + (max_columns - 1) * n * m + k * m * s, s * s, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+            }
+          else
+            {
+              // Поток без крайнего столбца
               // Цикл по строчкам
               for (int columns = 0; columns < max_columns; columns++)
                 {
                   // Цикл по столбцам (они не рядом, передавать будем по отдельности)
-                  MPI_Recv (a + (k + 1) * m * m * columns + m * m * i, m * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                  MPI_Recv (a + columns * n * m + k * m * m, s * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
                 }
             }
         }
-      else
+      else    // s == 0
         {
           for (int i = 0; i < k; i++)
             {
@@ -518,27 +602,14 @@ matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_ra
               for (int columns = 0; columns < max_columns; columns++)
                 {
                   // Цикл по столбцам (они не рядом, передавать будем по отдельности)
-                  MPI_Recv (a + n * m * columns + m * m * i, m * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
+                  MPI_Recv (a + columns * n * m + i * m * m, m * m, MPI_DOUBLE, p - 1, 0, MPI_COMM_WORLD, &status);
                 }
             }
 
         }
     }
 
-  if (s != 0)
-    {
-      if (my_rank == k % p)
-        {
-          for (int i = s; i < m; i++)
-            {
-              *(a + k * m * m + (max_columns - 1) * m * m * (k + 1) + i * m + i) = 1.;
-            }
-        }
-    }
-
-  delete buf;
-
-  return 0;
+  delete [] buf;
 }
 
 void

@@ -142,38 +142,31 @@ main (int argc, char *argv[])
         }
     }
 
-  int total_elements_amount = 0;
 
-  if (s != 0)
-    {
-      total_elements_amount = (k + 1) * m * m * max_columns;
+  int total_elements_amount = n * m * max_columns;
 
-      a = new double [total_elements_amount];
-      b = new double [total_elements_amount];
-      c = new double [total_elements_amount];
+  a = new double [total_elements_amount];
+  b = new double [total_elements_amount];
+  c = new double [total_elements_amount];
 
-      memset (a, 0, total_elements_amount * sizeof (double));
-      memset (b, 0, total_elements_amount * sizeof (double));
-      memset (c, 0, total_elements_amount * sizeof (double));
-    }
-  else
-    {
-      total_elements_amount = n * m * max_columns;
+  memset (a, 0, total_elements_amount * sizeof (double));
+  memset (b, 0, total_elements_amount * sizeof (double));
+  memset (c, 0, total_elements_amount * sizeof (double));
 
-      a = new double [total_elements_amount];
-      b = new double [total_elements_amount];
-      c = new double [total_elements_amount];
-
-      memset (a, 0, total_elements_amount * sizeof (double));
-      memset (b, 0, total_elements_amount * sizeof (double));
-      memset (c, 0, total_elements_amount * sizeof (double));
-    }
+  int error;
 
 
   if (argc == 4)
     {
-      matrix_read_mpi (argv[3], a, n, m, p, my_rank, max_columns);
-      init_e_mpi (b, n, m, p, my_rank);
+      matrix_read_mpi (argv[3], a, n, m, p, my_rank, max_columns, error);
+      //init_e_mpi (b, n, m, p, my_rank);
+      if (error)
+        {
+          delete a;
+          delete b;
+          delete c;
+          MPI_Finalize ();
+        }
     }
   else
     {
@@ -181,15 +174,22 @@ main (int argc, char *argv[])
     }
 
 //  matrix_read_mpi (argv[3], a, n, m, p, my_rank, max_columns);
-  memset (b, 0, total_elements_amount * sizeof (double));
-  matrix_read_mpi (argv[3], b, n, m, p, my_rank, max_columns);
+//  memset (b, 0, total_elements_amount * sizeof (double));
+//  matrix_read_mpi (argv[3], b, n, m, p, my_rank, max_columns, error);
+//  if (error)
+//    {
+//      delete a;
+//      delete b;
+//      delete c;
+//      MPI_Finalize ();
+//    }
 
 
-  matrix_mult_mpi (a, b, c, n, m, p, my_rank);
+  //matrix_mult_mpi (a, b, c, n, m, p, my_rank);
 
   for (int i = 0; i < total_elements_amount; i++)
     {
-      printf ("my rank = %d c[%d] = %f\n", my_rank, i, c[i]);
+      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
     }
 
 //  norm = matrix_norm_mpi (a, n, m, p, my_rank);
@@ -197,9 +197,9 @@ main (int argc, char *argv[])
 //  gauss_mpi (a, b, n, m, my_rank, p, norm);
 
 
-  delete a;
-  delete b;
-  delete c;
+  delete [] a;
+  delete [] b;
+  delete [] c;
   MPI_Finalize ();
   (void)block_norm;
   (void)test_block;
