@@ -187,10 +187,11 @@ main (int argc, char *argv[])
 
   //matrix_mult_mpi (a, b, c, n, m, p, my_rank);
 
-  for (int i = 0; i < total_elements_amount; i++)
-    {
-      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
-    }
+//  for (int i = 0; i < total_elements_amount; i++)
+//    {
+//      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
+//    }
+  matrix_print_mpi (a, n, m, p, my_rank, max_columns);
 
 //  norm = matrix_norm_mpi (a, n, m, p, my_rank);
 (void)norm;

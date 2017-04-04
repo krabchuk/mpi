@@ -647,7 +647,129 @@ init_e_mpi (double *b, int n, int m, int p, int my_rank)
 }
 
 
+void
+matrix_print_mpi (double *a, int n, int m, int p, int my_rank, int max_columns)
+{
 
+  if (n >= 10)
+    return;
+
+  int s = n % m;
+  int k = n / m;
+
+  double *full_matrix;
+
+  if (my_rank == 0)
+    {
+      full_matrix = new double [n * n];
+    }
+
+
+  MPI_Status status;
+
+  int max_columns_global = max_columns;
+
+  if (s != 0)
+    {
+      if (my_rank > k % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+  else
+    {
+      if (my_rank > (k - 1) % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+
+  if (s != 0)
+    {
+      if (my_rank == 0)
+        {
+          for (int i = 0; i < k; i++)
+            {
+              if (i % p == 0)
+                {
+                  copy_massive (full_matrix + i * n * m, a + (i / p) * m * n, m * n);
+                }
+              else
+                {
+                  MPI_Recv (full_matrix + i * n * m, n * m, MPI_DOUBLE, i % p, 0, MPI_COMM_WORLD, &status);
+                }
+            }
+          if (k % p == 0)
+            {
+              copy_massive (full_matrix + k * n * m, a + (k / p) * m * n, n * s);
+            }
+          else
+            {
+              MPI_Recv (full_matrix + k * n * m, n * s, MPI_DOUBLE, k % p, 0, MPI_COMM_WORLD, &status);
+            }
+        }
+      else
+        {
+          if (my_rank == k % p)
+            {
+              // Процесс с крайним столбцом
+              for (int i = 0; i < max_columns - 1; i++)
+                {
+                  MPI_Send (a + i * m * n, m * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                }
+              MPI_Send (a + (max_columns - 1) * m * n, s * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+            }
+          else
+            {
+              for (int i = 0; i < max_columns; i++)
+                {
+                  MPI_Send (a + i * m * n, m * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+                }
+            }
+        }
+    }
+  else
+    {
+      if (my_rank == 0)
+        {
+          for (int i = 0; i < k; i++)
+            {
+              if (i % p == 0)
+                {
+                  copy_massive (full_matrix + i * n * m, a + (i / p) * m * n, m * n);
+                }
+              else
+                {
+                  MPI_Recv (full_matrix + i * n * m, n * m, MPI_DOUBLE, i % p, 0, MPI_COMM_WORLD, &status);
+                }
+            }
+        }
+      else
+        {
+          for (int i = 0; i < max_columns; i++)
+            {
+              MPI_Send (a + i * m * n, m * n, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+            }
+        }
+    }
+
+  if (my_rank == 0)
+    {
+      print_matrix (full_matrix, n, m);
+      delete [] full_matrix;
+    }
+
+
+
+}
 
 
 

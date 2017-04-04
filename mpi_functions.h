@@ -9,4 +9,6 @@ void matrix_read_mpi(const char *filename, double *a, int n, int m, int p, int m
 
 void init_e_mpi (double *b, int n, int m, int p, int my_rank);
 
+void matrix_print_mpi (double *a, int n, int m, int p, int my_rank, int max_columns);
+
 #endif // MPI_FUNCTIONS
