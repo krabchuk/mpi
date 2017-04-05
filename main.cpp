@@ -153,19 +153,22 @@ main (int argc, char *argv[])
   memset (b, 0, total_elements_amount * sizeof (double));
   memset (c, 0, total_elements_amount * sizeof (double));
 
-  int error;
+  int error = 0;
+  int global_error = 0;
 
 
   if (argc == 4)
     {
-      matrix_read_mpi (argv[3], a, n, m, p, my_rank, max_columns, error);
-      //init_e_mpi (b, n, m, p, my_rank);
-      if (error)
+      mpi_matrix_read (argv[3], a, n, m, p, my_rank, max_columns, error);
+      mpi_init_e (b, n, m, p, my_rank);
+      MPI_Allreduce (&error, &global_error, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+      if (global_error)
         {
           delete a;
           delete b;
           delete c;
           MPI_Finalize ();
+          return 0;
         }
     }
   else
@@ -191,7 +194,9 @@ main (int argc, char *argv[])
 //    {
 //      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
 //    }
-  matrix_print_mpi (a, n, m, p, my_rank, max_columns);
+  mpi_matrix_print (a, n, m, p, my_rank, max_columns);
+
+  mpi_matrix_print (b, n, m, p, my_rank, max_columns);
 
 //  norm = matrix_norm_mpi (a, n, m, p, my_rank);
 (void)norm;

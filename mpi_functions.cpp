@@ -29,7 +29,7 @@ main_block_reduce (double *main_block_norm, int *main_block_index, int p, int &m
 }
 
 void
-matrix_mult_mpi (double *a, double *b, double *c, int n, int m, int p, int my_rank)
+mpi_matrix_mult (double *a, double *b, double *c, int n, int m, int p, int my_rank)
 {
   int s = n % m;
   int k = n / m;
@@ -358,7 +358,7 @@ matrix_mult_mpi (double *a, double *b, double *c, int n, int m, int p, int my_ra
 }
 
 void
-matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_rank, int max_columns, int &error)
+mpi_matrix_read (const char *filename, double *a, int n, int m, int p, int my_rank, int max_columns, int &error)
 {
   FILE *fp = fopen (filename, "r");
 
@@ -401,6 +401,8 @@ matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_ra
       error = 1;
       return;
     }
+
+  error = 0;
 
   if (my_rank == p - 1)
     {
@@ -613,7 +615,7 @@ matrix_read_mpi (const char *filename, double *a, int n, int m, int p, int my_ra
 }
 
 void
-init_e_mpi (double *b, int n, int m, int p, int my_rank)
+mpi_init_e (double *b, int n, int m, int p, int my_rank)
 {
   int i, j, k, s;
 
@@ -633,22 +635,22 @@ init_e_mpi (double *b, int n, int m, int p, int my_rank)
         }
       if (s)
         {
-          b += m * m;
+          b += m * s;
         }
     }
   if (s != 0 && i == k)
     {
       for (j = 0; j < k; j++)
         {
-          b += m * m;
+          b += m * s;
         }
-      set_diag_block (b, m);
+      set_diag_block (b, s);
     }
 }
 
 
 void
-matrix_print_mpi (double *a, int n, int m, int p, int my_rank, int max_columns)
+mpi_matrix_print (double *a, int n, int m, int p, int my_rank, int max_columns)
 {
 
   if (n >= 10)
