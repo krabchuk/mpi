@@ -194,9 +194,13 @@ main (int argc, char *argv[])
 //    {
 //      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
 //    }
-  mpi_matrix_print (a, n, m, p, my_rank, max_columns);
 
-  mpi_matrix_print (b, n, m, p, my_rank, max_columns);
+
+  mpi_matrix_read (argv[3], b, n, m, p, my_rank, max_columns, error);
+
+  mpi_matrix_mult (a, b, c, n, m, p, my_rank);
+
+  mpi_matrix_print (c, n, m, p, my_rank, max_columns);
 
 //  norm = matrix_norm_mpi (a, n, m, p, my_rank);
 (void)norm;

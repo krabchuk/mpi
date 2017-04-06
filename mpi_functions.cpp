@@ -61,6 +61,9 @@ mpi_matrix_mult (double *a, double *b, double *c, int n, int m, int p, int my_ra
     }
 
   double *c_tmp = new double [m * m];
+  double *a_tmp = new double [m * m];
+  double *b_tmp = new double [m * m];
+
   int i, j, iter;
   MPI_Status status;
 
@@ -296,10 +299,6 @@ mpi_matrix_mult (double *a, double *b, double *c, int n, int m, int p, int my_ra
     }
   else
     {
-      n = (k + 1) * m;
-      // дополнительняя крайняя колонка
-
-
       for (iter = 0; iter < p; iter++)
         {
 
@@ -337,10 +336,13 @@ mpi_matrix_mult (double *a, double *b, double *c, int n, int m, int p, int my_ra
                 {
                   for (j = 0; j < k + 1; j++)
                     {
-                      matrix_multiply (a + i * n * m + j * m * m, b + column_b_in_proc * n * m + i_global * m * m,
-                                       c_tmp, m, m, m);
-                      //if (my_rank == 0) print (c_tmp, m, m);
-                      add_massive (c + column_b_in_proc * n * m + j * m * m, c_tmp, m * m);
+                      memset (a_tmp, 0, m * m * sizeof(double));
+                      memset (b_tmp, 0, m * m * sizeof(double));
+                      mpi_get_block (a, a_tmp, j, i, n, m, p, my_rank, max_columns);
+                      mpi_get_block (b, b_tmp, i_global, column_b_in_proc, n, m, p, (my_rank + iter) % p, max_columns_b);
+                      matrix_multiply (a_tmp, b_tmp, c_tmp, m, m, m);
+                      //add_massive (c + column_b_in_proc * n * m + j * m * m, c_tmp, m * m);
+                      mpi_add_massive (c, c_tmp, j, column_b_in_proc, n, m, p, (my_rank + iter) % p, max_columns_b);
                     }
                 }
 
@@ -774,7 +776,144 @@ mpi_matrix_print (double *a, int n, int m, int p, int my_rank, int max_columns)
 }
 
 
+void
+mpi_get_block (double *a, double *block, int i_local, int j_local, int n, int m, int p, int my_rank, int max_columns)
+{
+  int s = n % m;
+  int k = n / m;
 
+  memset (block, 0, m * m * sizeof (double));
+
+  if (my_rank == k % p)
+    {
+      // крайний блок у этого процесса
+
+      if (i_local == k)
+        {
+          if (j_local == (max_columns - 1))
+            {
+              for (int i = 0; i < s; i++)
+                {
+                  copy_massive (block + i * m, a + j_local * n * m + i_local * m * s + i * s, s);
+                }
+              for (int i = s; i < m; i++)
+                {
+                  block[i * m + i] = 1.;
+                }
+            }
+          else
+            {
+              for (int i = 0; i < m; i++)
+                {
+                  copy_massive (block + i * m, a + j_local * n * m + i_local * m * m + i * s, s);
+                }
+            }
+        }
+      else   // i_local != k
+        {
+
+          if (j_local == (max_columns - 1))
+            {
+              copy_massive (block, a + j_local * n * m + i_local * m * s, m * s);
+            }
+          else
+            {
+              copy_massive (block, a + j_local * n * m + i_local * m * m, m * m);
+            }
+        }
+
+    }
+  else
+    {
+      if (i_local == k)
+        {
+          for (int i = 0; i < m; i++)
+            {
+              copy_massive (block + i * m, a + j_local * n * m + i_local * m * m + i * s, s);
+            }
+        }
+      else
+        {
+          copy_massive (block, a + j_local * n * m + i_local * m * m, m * m);
+        }
+    }
+
+}
+
+void
+mpi_add_massive (double *c, double *c_tmp, int i_local, int j_local, int n, int m, int p, int my_rank, int max_columns)
+{
+  int k = n / m;
+  int s = n % m;
+
+
+
+  if (my_rank == k % p)
+    {
+      // крайний блок у этого процесса
+
+      if (i_local == k)
+        {
+          if (j_local == (max_columns - 1))
+            {
+              c = c + i_local * m * s + j_local * n * m;
+              for (int j = 0; j < s; j++)
+                {
+                  for (int i = 0; i < s; i++)
+                    {
+                      *(c) = *(c) + *(c_tmp + i + j * m);
+                      c = c + 1;
+                    }
+                }
+            }
+          else
+            {
+              c = c + i_local * m * m + j_local * n * m;
+              for (int j = 0; j < m; j++)
+                {
+                  for (int i = 0; i < s; i++)
+                    {
+                      *(c) = *(c) + *(c_tmp + i + j * m);
+                      c = c + 1;
+                    }
+                }
+            }
+        }
+      else   // i_local != k
+        {
+          if (j_local == (max_columns - 1))
+            {
+              c = c + i_local * m * s + j_local * n * m;
+              add_massive (c, c_tmp, m * s);
+            }
+          else
+            {
+              c = c + i_local * m * m + j_local * n * m;
+              add_massive (c, c_tmp, m * m);
+            }
+        }
+
+    }
+  else
+    {
+      c = c + i_local * m * m + j_local * n * m;
+      if (i_local == k)
+        {
+          for (int j = 0; j < m; j++)
+            {
+              for (int i = 0; i < s; i++)
+                {
+                  *(c) = *(c) + *(c_tmp + i + j * m);
+                  c = c + 1;
+                }
+            }
+        }
+      else
+        {
+          add_massive (c, c_tmp, m * m);
+        }
+    }
+}
 
 
 

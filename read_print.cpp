@@ -4,6 +4,8 @@
 
 #include "head.h"
 
+// ВЫБОР ФУНКЦИИ НА СТРОЧКЕ 269
+
 double
 f1 (int i, int j)
 {
