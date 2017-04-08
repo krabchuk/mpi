@@ -1019,81 +1019,6 @@ swap_block (double *a, double *b, int n, int m)
 //}
 
 
-double
-neviazka (double *a, double *b, int n, int m)
-{
-  int i, j, k, s, l, r;
-  double *block, *summ, *vector, max = -1;
-
-  block = new double [m * m];
-  summ = new double [m * m];
-  vector = new double [m];
-  k = n / m;
-  s = n % m;
-
-
-
-  for (j = 0; j < k; j++)
-    {
-      memset (vector, 0, m * sizeof (double));
-
-      for (i = 0; i < k; i++)
-        {
-          memset (summ, 0, m * m * sizeof (double));
-          for (l = 0; l < k; l++)
-            {
-              matrix_multiply (a + pos_of_block (i, l, n, m), b + pos_of_block (l, j, n, m),
-                               block, m, m, m);
-              matrix_summ (summ, block, m, m);
-            }
-          if (s != 0)
-            {
-              matrix_multiply (a + pos_of_block (i, k, n, m), b + pos_of_block (k, j, n, m),
-                               block, m, s, m);
-              matrix_summ (summ, block, m, m);
-            }
-
-          for (l = 0; l < m; l++)
-            {
-              for (r = 0; r < m; r++)
-                {
-                  if (i != j)
-                    {
-                      vector [l] += fabs (summ[r * m + l]);
-                    }
-                  else
-                    {
-                      if (l != r)
-                        {
-                          vector [l] += fabs (summ[r * m + l]);
-                        }
-                      else
-                        {
-                          vector [l] += fabs (summ[r * m + l] - 1);
-                        }
-                    }
-                }
-            }
-
-        }
-
-      for (l = 0; l < m; l++)
-        {
-          if (vector[l] > max)
-            {
-              max = vector[l];
-            }
-        }
-    }
-
-  delete [] block;
-  delete [] summ;
-  delete [] vector;
-
-  return max;
-}
-
-
 // A = A + B
 void
 matrix_summ (double *a, double *b, int n, int m)
@@ -1213,10 +1138,7 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double no
       copy_massive (test_block, min_column + m * m * iter, m * m);
       gauss (test_block, test_b, m, test_pos_for_block, norm);
 
-      for (int i = 0; i < m * m; i++)
-        {
-          printf ("my rank = %d rev main block [%d] = %f\n", my_rank, i, test_b[i]);
-        }
+      printf ("my rank = %d main = %lf\n", my_rank, test_b[0]);
     }
 
   (void)b;

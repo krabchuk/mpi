@@ -29,11 +29,6 @@ main (int argc, char *argv[])
   double *a;                          // Original matrix
   double *b;                          // Attached matrix
   double *c;
-  double block_norm;
-  double *test_block;
-  double *test_b;
-  int *test_pos_for_block;
-  int iter = 1;
 
   MPI_Init  (&argc, &argv);
   MPI_Comm_rank (MPI_COMM_WORLD, &my_rank);
@@ -196,28 +191,17 @@ main (int argc, char *argv[])
 //    }
 
 
-  mpi_matrix_read (argv[3], b, n, m, p, my_rank, max_columns, error);
 
-  mpi_matrix_mult (a, b, c, n, m, p, my_rank);
+  norm = matrix_norm_mpi (a, n, m, p, my_rank);
 
-  mpi_matrix_print (c, n, m, p, my_rank, max_columns);
-
-//  norm = matrix_norm_mpi (a, n, m, p, my_rank);
-(void)norm;
-//  gauss_mpi (a, b, n, m, my_rank, p, norm);
+  gauss_mpi (a, b, n, m, my_rank, p, norm);
 
 
   delete [] a;
   delete [] b;
   delete [] c;
   MPI_Finalize ();
-  (void)block_norm;
-  (void)test_block;
-  (void)test_b;
-  (void)test_pos_for_block;
-  (void)iter;
-  (void)k;
-  (void)s;
+
   return 0;
 }
 /*
