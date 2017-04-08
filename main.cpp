@@ -194,7 +194,7 @@ main (int argc, char *argv[])
 
   norm = matrix_norm_mpi (a, n, m, p, my_rank);
 
-  gauss_mpi (a, b, n, m, my_rank, p, norm);
+  gauss_mpi (a, b, n, m, my_rank, p, max_columns, norm);
 
 
   delete [] a;

@@ -20,7 +20,7 @@ struct val_num
 
 int get_data(char *filename, double *a, double *b, int n, int m, int p, int my_rank);
 void set_block (double *a, int global_i, int global_j, int n, int m);
-int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double norm);
+int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns, double norm);
 void set_diag_block (double *b, int n);
 
 double matrix_norm_mpi (double *a, int n, int m, int p, int my_rank);  //stable

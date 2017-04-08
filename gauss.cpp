@@ -1037,7 +1037,7 @@ matrix_summ (double *a, double *b, int n, int m)
 
 
 
-int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double norm)
+int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns, double norm)
 {
 
   int k = n / m;
@@ -1060,9 +1060,17 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double no
 
   double *min_column = new double [n * m];
 
+  int *index = new int [k];
+  for (int i = 0; i < k; i++)
+    index[i] = i;
 
-  for (int iter = 0; iter < 1; iter++)
+  int buf_int = 0;
+
+
+  for (int iter = 0; iter < k; iter++)
     {
+
+      mpi_matrix_print (a, n, m, p, my_rank, max_columns);
 
       //Выяснили глобальный индекс минимального столбца
 
@@ -1109,6 +1117,10 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double no
 
       // Меняем его местами с iter-ым
 
+      buf_int = index[iter];
+      index[iter] = index[min_number];
+      index[min_number] = buf_int;
+
       if (iter % p == min_number % p)
         {
           // Оказались в одном процессе, просто физически меняем
@@ -1138,7 +1150,109 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, double no
       copy_massive (test_block, min_column + m * m * iter, m * m);
       gauss (test_block, test_b, m, test_pos_for_block, norm);
 
-      printf ("my rank = %d main = %lf\n", my_rank, test_b[0]);
+      // Домножаем строчку на обратную матррицу главного блока
+
+      int start = (iter + 1) / p;
+
+      if (my_rank == k % p && s != 0)
+        {
+          for (int j = start; j < max_columns - 1; j++)
+            {
+              matrix_multiply (test_b, a + j * n * m + iter * m * m, test_block, m, m, m);
+              cpy_matrix (a + j * n * m + iter * m * m, test_block, m, m);
+            }
+          matrix_multiply (test_b, a + (max_columns - 1) * n * m + iter * m * s, test_block, m, m, s);
+          cpy_matrix (a + (max_columns - 1) * n * m + iter * m * s, test_block, m, s);
+
+        }
+      else
+        {
+          for (int j = start; j < max_columns; j++)
+            {
+              matrix_multiply (test_b, a + j * n * m + iter * m * m, test_block, m, m, m);
+              cpy_matrix (a + j * n * m + iter * m * m, test_block, m, m);
+            }
+        }
+
+
+      if (my_rank == k % p && s != 0)
+        {
+          for (int j = 0; j < (iter + 1) / p; j++)
+            {
+              matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
+              cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
+            }
+          matrix_multiply (test_b, b + (max_columns - 1) * n * m + iter * m * s, test_block, m, m, s);
+          cpy_matrix (b + (max_columns - 1) * n * m + iter * m * s, test_block, m, s);
+
+        }
+      else
+        {
+          for (int j = 0; j < (iter + 1) / p; j++)
+            {
+              matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
+              cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
+            }
+        }
+      mpi_matrix_print (test_b, m, 1, p, my_rank, max_columns);
+      if (my_rank == 0)
+        printf ("min num = %d\n", min_number);
+
+//      // Вычитаем строку из нижних строк
+//      for (j = i + 1; j < k; j++)
+//        {
+//          cpy_matrix (block, a + pos_of_block (j, i, n, m), m, m);
+//          for (l = start; l < k; l += p)
+//            {
+//              matrix_multiply (block, a + pos_of_block (i, l, n, m), c, m, m, m);
+//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (j, l, n, m), c, m, m);
+//            }
+//          if (l == k && s)
+//            {
+//              matrix_multiply (block, a + pos_of_block (i, k, n, m), c, m, m, s);
+//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (j, k, n, m), c, m, s);
+//            }
+
+//          for (l = self_number; l < i + 1; l += p)
+//            {
+//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, m, m, m);
+//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (j, l, n, m), c, m, m);
+//            }
+//          if (l == k && s)
+//            {
+//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, m, m, s);
+//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (j, l, n, m), c, m, s);
+//            }
+//        }
+
+//      if (s)
+//        {
+//          cpy_matrix (block, a + pos_of_block (k, i, n, m), s, m);
+//          for (l = start; l < k; l += p)
+//            {
+//              matrix_multiply (block, a + pos_of_block (i, l, n, m), c, s, m, m);
+//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (k, l, n, m), c, s, m);
+//            }
+//          if (l == k)
+//            {
+//              matrix_multiply (block, a + pos_of_block (i, k, n, m), c, s, m, s);
+//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (k, k, n, m), c, s, s);
+//            }
+
+//          for (l = self_number; l < i + 1; l += p)
+//            {
+//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, s, m, m);
+//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (k, l, n, m), c, s, m);
+//            }
+//          if (l == k)
+//            {
+//              matrix_multiply (block, b + pos_of_block (i, k, n, m), c, s, m, s);
+//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (k, k, n, m), c, s, s);
+//            }
+//        }
+
+
+
     }
 
   (void)b;
