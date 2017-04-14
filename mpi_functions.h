@@ -15,4 +15,10 @@ void mpi_get_block (double *a, double *block, int i_local, int j_local, int n, i
 
 void mpi_add_massive (double *c, double *c_tmp, int i_local, int j_local, int n, int m, int p, int my_rank, int max_columns);
 
+void mpi_subtract_e (double *a, int n, int m, int p, int my_rank, int max_columns_global);
+
+void subtract_e_from_block (double *a, int n);
+
+double mpi_matrix_norm (double *a, int n, int m, int p, int my_rank, int max_columns_global);
+
 #endif // MPI_FUNCTIONS

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#define MAX_SIZE 5
+#define MAX_SIZE 10
 #define EPS 1e-16
 
 struct val_num
@@ -20,13 +20,15 @@ struct val_num
 
 int get_data(char *filename, double *a, double *b, int n, int m, int p, int my_rank);
 void set_block (double *a, int global_i, int global_j, int n, int m);
-int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns, double norm);
+int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns_global, double norm);
 void set_diag_block (double *b, int n);
 
 double matrix_norm_mpi (double *a, int n, int m, int p, int my_rank);  //stable
 
 int search_main_block (double *a, int n, int m, int p, double norm_for_block, int my_rank, int i,
                    double *test_block, double *test_b, int *test_pos_for_block, double *main_block_norm);
+
+double get_full_time();
 
 /****************************/
 

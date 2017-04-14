@@ -4,7 +4,7 @@
 
 #include "head.h"
 
-// ВЫБОР ФУНКЦИИ НА СТРОЧКЕ 269
+// ВЫБОР ФУНКЦИИ НА СТРОЧКЕ 262
 
 double
 f1 (int i, int j)
@@ -138,21 +138,12 @@ print_matrix (double *a, int n, int m)
 void
 print_matrix_real (double *a, int n, int m)
 {
-  int i, j, p;
-  (void)m;
-  if (n > MAX_SIZE)
+  int i, j;
+  for (i = 0; i < n; i++)
     {
-      p = MAX_SIZE;
-    }
-  else
-    {
-      p = n;
-    }
-  for (i = 0; i < p; i++)
-    {
-      for (j = 0; j < p; j++)
+      for (j = 0; j < m; j++)
         {
-          printf ("%.3f      ", a[i * n + j]);
+          printf ("%.3f      ", a[i + j * n]);
         }
       printf ("\n\n");
     }
@@ -268,7 +259,7 @@ set_block (double *a, int global_i, int global_j, int n, int m)
     {
       for (i = i_start; i < i_max; i++)
         {
-          *a = f3 (i, j);
+          *a = f2 (i, j);
           a = a + 1;
         }
     }

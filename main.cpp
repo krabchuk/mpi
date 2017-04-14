@@ -4,6 +4,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 
 #include "head.h"
@@ -171,30 +176,61 @@ main (int argc, char *argv[])
       get_data (0, a, b, n, m, p, my_rank);
     }
 
-//  matrix_read_mpi (argv[3], a, n, m, p, my_rank, max_columns);
-//  memset (b, 0, total_elements_amount * sizeof (double));
-//  matrix_read_mpi (argv[3], b, n, m, p, my_rank, max_columns, error);
-//  if (error)
-//    {
-//      delete a;
-//      delete b;
-//      delete c;
-//      MPI_Finalize ();
-//    }
+  norm = mpi_matrix_norm (a, n, m, p, my_rank, max_columns);
 
+  //mpi_matrix_print (a, n, m, p, my_rank, max_columns);
 
-  //matrix_mult_mpi (a, b, c, n, m, p, my_rank);
+  struct timeval start, finish;
 
-//  for (int i = 0; i < total_elements_amount; i++)
-//    {
-//      printf ("my rank = %d a[%d] = %f\n", my_rank, i, a[i]);
-//    }
+  double t1, t2, time;
 
+  if (my_rank == 0)
+    gettimeofday (&start, 0);
 
+  if (gauss_mpi (a, b, n, m, my_rank, p, max_columns, norm))
+    {
+      delete [] a;
+      delete [] b;
+      delete [] c;
+      MPI_Finalize ();
 
-  norm = matrix_norm_mpi (a, n, m, p, my_rank);
+      return 0;
+    }
 
-  gauss_mpi (a, b, n, m, my_rank, p, max_columns, norm);
+  if (my_rank == 0)
+    {
+      gettimeofday (&finish, 0);
+
+      t1 = start.tv_sec+(start.tv_usec/1000000.0);
+      t2 = finish.tv_sec+(finish.tv_usec/1000000.0);
+
+      time = t2 - t1;
+      printf ("Elapsed: %f\n", time);
+    }
+
+  //mpi_matrix_print (b, n, m, p, my_rank, max_columns);
+
+  if (argc == 4)
+    {
+      mpi_matrix_read (argv[3], a, n, m, p, my_rank, max_columns, error);
+    }
+  else
+    {
+      get_data (0, a, c, n, m, p, my_rank);
+    }
+
+  memset (c, 0, total_elements_amount * sizeof (double));
+
+  mpi_matrix_mult (a, b, c, n, m, p, my_rank);
+
+  mpi_subtract_e (c, n, m, p, my_rank, max_columns);
+
+  norm = mpi_matrix_norm (c, n, m, p, my_rank, max_columns);
+
+  if (my_rank == 0)
+    {
+      printf ("Residual = %e\n", norm);
+    }
 
 
   delete [] a;

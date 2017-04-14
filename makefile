@@ -15,5 +15,5 @@ mpi_functions.o: mpi_functions.cpp mpi_functions.h head.h
 	$(COMPILER) $(CFLAGS) -c mpi_functions.cpp
 
 clean:
-	rm -f $(PROGRAM) leak.out* gmon* *.o
+	rm -f $(PROGRAM) leak* gmon* *.o
 

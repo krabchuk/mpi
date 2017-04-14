@@ -623,8 +623,10 @@ search_main_block (double *a,
   int iter = start;
 
 
+
   for (iter = start; iter < k; iter += p)
     {
+
       cpy_matrix (test_block, a, m, m);
       if (gauss (test_block, test_b, m, test_pos_for_block, norm_for_block))
         {
@@ -1037,7 +1039,7 @@ matrix_summ (double *a, double *b, int n, int m)
 
 
 
-int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns, double norm)
+int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_columns_global, double norm)
 {
 
   int k = n / m;
@@ -1066,11 +1068,34 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
 
   int buf_int = 0;
 
+  int max_columns = 0;
+
+  if (s != 0)
+    {
+      if (my_rank > k % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+  else
+    {
+      if (my_rank > (k - 1) % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+
 
   for (int iter = 0; iter < k; iter++)
     {
-
-      mpi_matrix_print (a, n, m, p, my_rank, max_columns);
 
       //Выяснили глобальный индекс минимального столбца
 
@@ -1083,7 +1108,6 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
       int min_number = search_main_block (a, n, m, p, norm, my_rank, iter,
                          test_block, test_b, test_pos_for_block, &local_block_norm);
 
-
       local_main_block_norm[my_rank] = local_block_norm;
       local_main_block_index[my_rank] = min_number;
 
@@ -1091,6 +1115,30 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
       MPI_Allreduce (local_main_block_index, global_main_block_index, p, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 
       main_block_reduce (global_main_block_norm, global_main_block_index, p, min_number);
+
+      if (min_number < 0)
+        {
+          delete [] test_block;
+          delete [] test_b;
+          delete [] test_pos_for_block;
+
+          delete [] local_main_block_norm;
+          delete [] local_main_block_index;
+
+          delete [] global_main_block_norm;
+          delete [] global_main_block_index;
+
+          delete [] min_column;
+
+          delete [] index;
+
+          if (my_rank == 0)
+            {
+              printf ("Cant solve step %d\n", iter);
+            }
+
+          return -1;
+        }
 
       // Отправляем его всем
 
@@ -1101,19 +1149,9 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
       if (min_number % p == my_rank)
         {
           copy_massive (min_column, a + n * m * (min_number / p), n * m);
-          for (int i = 0; i < p; i++)
-            {
-              if (i == my_rank)
-                continue;
-
-              MPI_Send (min_column, n * m, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
-
-            }
         }
-      else
-        {
-          MPI_Recv (min_column, n * m, MPI_DOUBLE, min_number % p, 0, MPI_COMM_WORLD, &status);
-        }
+
+      MPI_Bcast(min_column, n * m, MPI_DOUBLE, min_number % p, MPI_COMM_WORLD);
 
       // Меняем его местами с iter-ым
 
@@ -1148,11 +1186,18 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
       // Вычисляем обратную матрицу к угловому минимальному элементу
 
       copy_massive (test_block, min_column + m * m * iter, m * m);
+      //double main_block_norm = block_norm (test_block, m);
       gauss (test_block, test_b, m, test_pos_for_block, norm);
 
       // Домножаем строчку на обратную матррицу главного блока
 
-      int start = (iter + 1) / p;
+      int start = 0;
+
+      if (my_rank >= iter % p)
+        start = iter / p;
+      else
+        start = (iter / p) + 1;
+
 
       if (my_rank == k % p && s != 0)
         {
@@ -1177,7 +1222,7 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
 
       if (my_rank == k % p && s != 0)
         {
-          for (int j = 0; j < (iter + 1) / p; j++)
+          for (int j = 0; j < max_columns - 1/*= start*/; j++)
             {
               matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
               cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
@@ -1188,92 +1233,329 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
         }
       else
         {
-          for (int j = 0; j < (iter + 1) / p; j++)
+          for (int j = 0; j < max_columns/*= start*/; j++)
             {
               matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
               cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
             }
         }
-      mpi_matrix_print (test_b, m, 1, p, my_rank, max_columns);
-      if (my_rank == 0)
-        printf ("min num = %d\n", min_number);
 
-//      // Вычитаем строку из нижних строк
-//      for (j = i + 1; j < k; j++)
-//        {
-//          cpy_matrix (block, a + pos_of_block (j, i, n, m), m, m);
-//          for (l = start; l < k; l += p)
-//            {
-//              matrix_multiply (block, a + pos_of_block (i, l, n, m), c, m, m, m);
-//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (j, l, n, m), c, m, m);
-//            }
-//          if (l == k && s)
-//            {
-//              matrix_multiply (block, a + pos_of_block (i, k, n, m), c, m, m, s);
-//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (j, k, n, m), c, m, s);
-//            }
+      // Вычитаем строку из нижних строк
 
-//          for (l = self_number; l < i + 1; l += p)
-//            {
-//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, m, m, m);
-//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (j, l, n, m), c, m, m);
-//            }
-//          if (l == k && s)
-//            {
-//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, m, m, s);
-//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (j, l, n, m), c, m, s);
-//            }
-//        }
+      if (my_rank == k % p && s != 0)
+        {
+          for (int j = iter + 1; j < k; j++)
+            {
+              copy_massive (test_block, min_column + j * m * m, m * m);
 
-//      if (s)
-//        {
-//          cpy_matrix (block, a + pos_of_block (k, i, n, m), s, m);
-//          for (l = start; l < k; l += p)
-//            {
-//              matrix_multiply (block, a + pos_of_block (i, l, n, m), c, s, m, m);
-//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (k, l, n, m), c, s, m);
-//            }
-//          if (l == k)
-//            {
-//              matrix_multiply (block, a + pos_of_block (i, k, n, m), c, s, m, s);
-//              subtraction_from_matrix_a_matrix_b (a + pos_of_block (k, k, n, m), c, s, s);
-//            }
+              for (int column = start; column < max_columns - 1; column++)
+                {
+                  matrix_multiply (test_block, a + column * n * m + iter * m * m, test_b, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (a + column * n * m + j * m * m, test_b, m, m);
+                }
+              matrix_multiply (test_block, a + (max_columns - 1) * n * m + iter * m * s, test_b, m, m, s);
+              subtraction_from_matrix_a_matrix_b (a + (max_columns - 1) * n * m + j * m * s, test_b, m, s);
 
-//          for (l = self_number; l < i + 1; l += p)
-//            {
-//              matrix_multiply (block, b + pos_of_block (i, l, n, m), c, s, m, m);
-//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (k, l, n, m), c, s, m);
-//            }
-//          if (l == k)
-//            {
-//              matrix_multiply (block, b + pos_of_block (i, k, n, m), c, s, m, s);
-//              subtraction_from_matrix_a_matrix_b (b + pos_of_block (k, k, n, m), c, s, s);
-//            }
-//        }
+              for (int column = 0; column < max_columns - 1/*= start*/; column++)
+                {
+                  matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + j * m * m, test_b, m, m);
+                }
+              matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, m, m, s);
+              subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + j * m * s, test_b, m, s);
+            }
 
+          copy_massive (test_block, min_column + k * m * m, s * m);
+
+          for (int column = start; column < max_columns - 1; column++)
+            {
+              matrix_multiply (test_block, a + column * n * m + iter * m * m, test_b, s, m, m);
+              subtraction_from_matrix_a_matrix_b (a + column * n * m + k * m * m, test_b, s, m);
+            }
+          matrix_multiply (test_block, a + (max_columns - 1) * n * m + iter * m * s, test_b, s, m, s);
+          subtraction_from_matrix_a_matrix_b (a + (max_columns - 1) * n * m + k * m * s, test_b, s, s);
+
+          for (int column = 0; column < max_columns - 1/*= start*/; column++)
+            {
+              matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, s, m, m);
+              subtraction_from_matrix_a_matrix_b (b + column * n * m + k * m * m, test_b, s, m);
+            }
+          matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, s, m, s);
+          subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + k * m * s, test_b, s, s);
+
+        }
+      else
+        {
+          for (int j = iter + 1; j < k; j++)
+            {
+              copy_massive (test_block, min_column + j * m * m, m * m);
+
+              for (int column = start; column < max_columns; column++)
+                {
+                  matrix_multiply (test_block, a + column * n * m + iter * m * m, test_b, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (a + column * n * m + j * m * m, test_b, m, m);
+                }
+
+              for (int column = 0; column < max_columns/*= start*/; column++)
+                {
+                  matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + j * m * m, test_b, m, m);
+                }
+            }
+
+          if (s != 0)
+            {
+              copy_massive (test_block, min_column + k * m * m, s * m);
+
+              for (int column = start; column < max_columns; column++)
+                {
+                  matrix_multiply (test_block, a + column * n * m + iter * m * m, test_b, s, m, m);
+                  subtraction_from_matrix_a_matrix_b (a + column * n * m + k * m * m, test_b, s, m);
+                }
+
+              for (int column = 0; column < max_columns/*= start*/; column++)
+                {
+                  matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, s, m, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + k * m * m, test_b, s, m);
+                }
+            }
+        }
 
 
     }
 
-  (void)b;
-  (void)s;
-  (void)k;
+  // Обрабатываем последний блок
 
-  delete test_block;
-  delete test_b;
-  delete test_pos_for_block;
+  if (s != 0)
+    {
+      int res = 0;
 
-  delete local_main_block_norm;
-  delete local_main_block_index;
+      if (my_rank == k % p)
+        {
+          copy_massive (test_block, a + (max_columns - 1) * n * m + k * m * s, s * s);
 
-  delete global_main_block_norm;
-  delete global_main_block_index;
+          res = gauss (test_block, test_b, s, test_pos_for_block, norm);
 
-  delete min_column;
+          MPI_Bcast(&res, 1, MPI_INT, k % p, MPI_COMM_WORLD);
 
+          if (res == 0)
+            {
+              delete [] test_block;
+              delete [] test_b;
+              delete [] test_pos_for_block;
+
+              delete [] local_main_block_norm;
+              delete [] local_main_block_index;
+
+              delete [] global_main_block_norm;
+              delete [] global_main_block_index;
+
+              delete [] min_column;
+
+              delete [] index;
+
+              printf ("Cant invert last block\n");
+
+              return -1;
+            }
+
+          MPI_Bcast(test_b, m * m, MPI_DOUBLE, k % p, MPI_COMM_WORLD);
+
+          matrix_multiply (test_b, a + (max_columns - 1) * n * m + k * m * s, test_block, s, s, s);
+          cpy_matrix (a + (max_columns - 1) * n * m + k * m * s, test_block, s, s);
+
+          for (int j = 0; j < max_columns - 1; j++)
+            {
+              matrix_multiply (test_b, b + j * n * m + k * m * m, test_block, s, s, m);
+              cpy_matrix (b + j * n * m + k * m * m, test_block, s, m);
+            }
+          matrix_multiply (test_b, b + (max_columns - 1) * n * m + k * m * s, test_block, s, s, s);
+          cpy_matrix (b + (max_columns - 1) * n * m + k * m * s, test_block, s, s);
+
+
+        }
+      else
+        {
+          MPI_Bcast(&res, 1, MPI_INT, k % p, MPI_COMM_WORLD);
+
+          if (res == 0)
+            {
+              delete [] test_block;
+              delete [] test_b;
+              delete [] test_pos_for_block;
+
+              delete [] local_main_block_norm;
+              delete [] local_main_block_index;
+
+              delete [] global_main_block_norm;
+              delete [] global_main_block_index;
+
+              delete [] min_column;
+
+              delete [] index;
+
+              return -1;
+            }
+
+          MPI_Bcast(test_b, m * m, MPI_DOUBLE, k % p, MPI_COMM_WORLD);
+
+          for (int j = 0; j < max_columns; j++)
+            {
+              matrix_multiply (test_b, b + j * n * m + k * m * m, test_block, s, s, m);
+              cpy_matrix (b + j * n * m + k * m * m, test_block, s, m);
+            }
+        }
+    }
+
+  // Обратный ход
+
+  if (s != 0)
+    {
+      if (my_rank == k % p)
+        {
+          copy_massive (min_column, a + (max_columns - 1) * n * m, n * s);
+
+          MPI_Bcast(min_column, n * s, MPI_DOUBLE, k % p, MPI_COMM_WORLD);
+
+          for (int column = 0; column < max_columns - 1; column++)
+            {
+              for (int i = k - 1; i >= 0; i--)
+                {
+                  matrix_multiply (min_column + i * m * s, b + column * n * m + k * m * m, test_block, m, s, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + i * m * m, test_block, m, m);
+                }
+            }
+          for (int i = k - 1; i >= 0; i--)
+            {
+              matrix_multiply (min_column + i * m * s, b + (max_columns - 1) * n * m + k * m * s, test_block, m, s, s);
+              subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + i * m * s, test_block, m, s);
+            }
+        }
+      else
+        {
+          MPI_Bcast(min_column, n * s, MPI_DOUBLE, k % p, MPI_COMM_WORLD);
+
+          for (int column = 0; column < max_columns; column++)
+            {
+              for (int i = k - 1; i >= 0; i--)
+                {
+                  matrix_multiply (min_column + i * m * s, b + column * n * m + k * m * m, test_block, m, s, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + i * m * m, test_block, m, m);
+                }
+            }
+        }
+    }
+
+  for (int iter = k - 1; iter > 0; iter--)
+    {
+      if (my_rank == iter % p)
+        {
+          copy_massive (min_column, a + (iter / p) * n * m, n * m);
+
+          MPI_Bcast(min_column, n * m, MPI_DOUBLE, iter % p, MPI_COMM_WORLD);
+        }
+      else
+        {
+          MPI_Bcast(min_column, n * m, MPI_DOUBLE, iter % p, MPI_COMM_WORLD);
+        }
+
+
+      if (my_rank == k % p && s != 0)
+        {
+          for (int column = 0; column < max_columns - 1; column++)
+            {
+              for (int i = iter - 1; i >= 0; i--)
+                {
+                  matrix_multiply (min_column + i * m * m, b + column * n * m + iter * m * m, test_block, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + i * m * m, test_block, m, m);
+                }
+            }
+          for (int i = iter - 1; i >= 0; i--)
+            {
+              matrix_multiply (min_column + i * m * m, b + (max_columns - 1) * n * m + iter * m * s, test_block, m, m, s);
+              subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + i * m * s, test_block, m, s);
+            }
+        }
+      else
+        {
+          for (int column = 0; column < max_columns; column++)
+            {
+              for (int i = iter - 1; i >= 0; i--)
+                {
+                  matrix_multiply (min_column + i * m * m, b + column * n * m + iter * m * m, test_block, m, m, m);
+                  subtraction_from_matrix_a_matrix_b (b + column * n * m + i * m * m, test_block, m, m);
+                }
+            }
+        }
+    }
+
+
+  for (int i = 0; i < k; i++)
+    {
+      int sw = index[i];
+
+      if (my_rank == k % p && s != 0)
+        {
+          for (int j = 0; j < max_columns - 1; j++)
+            {
+              copy_massive (a + j * n * m + sw * m * m, b + j * n * m + i * m * m, m * m);
+            }
+          copy_massive (a + (max_columns - 1) * n * m + sw * m * s, b + (max_columns - 1) * n * m + i * m * s, m * s);
+        }
+      else
+        {
+          for (int j = 0; j < max_columns; j++)
+            {
+              copy_massive (a + j * n * m + sw * m * m, b + j * n * m + i * m * m, m * m);
+            }
+        }
+    }
+
+  for (int i = 0; i < k; i++)
+    {
+
+      if (my_rank == k % p && s != 0)
+        {
+          for (int j = 0; j < max_columns - 1; j++)
+            {
+              copy_massive (b + j * n * m + i * m * m, a + j * n * m + i * m * m, m * m);
+            }
+          copy_massive (b + (max_columns - 1) * n * m + i * m * s, a + (max_columns - 1) * n * m + i * m * s, m * s);
+        }
+      else
+        {
+          for (int j = 0; j < max_columns; j++)
+            {
+              copy_massive (b + j * n * m + i * m * m, a + j * n * m + i * m * m, m * m);
+            }
+        }
+    }
+
+
+
+
+  delete [] test_block;
+  delete [] test_b;
+  delete [] test_pos_for_block;
+
+  delete [] local_main_block_norm;
+  delete [] local_main_block_index;
+
+  delete [] global_main_block_norm;
+  delete [] global_main_block_index;
+
+  delete [] min_column;
+
+  delete [] index;
   return 0;
 }
 
+double get_full_time()
+{
+  struct timeval buf;
+  gettimeofday (&buf, 0);
+  return buf.tv_sec + buf.tv_usec / 1000000;
+}
 
 
 

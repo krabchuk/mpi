@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 
 #include "head.h"
@@ -356,7 +357,9 @@ mpi_matrix_mult (double *a, double *b, double *c, int n, int m, int p, int my_ra
         }
     }
 
-  delete c_tmp;
+  delete [] a_tmp;
+  delete [] b_tmp;
+  delete [] c_tmp;
 }
 
 void
@@ -915,8 +918,169 @@ mpi_add_massive (double *c, double *c_tmp, int i_local, int j_local, int n, int 
     }
 }
 
+void
+mpi_subtract_e (double *a, int n, int m, int p, int my_rank, int max_columns_global)
+{
+  int k = n / m;
+  int s = n % m;
+
+  int max_columns = max_columns_global;
+
+  if (s != 0)
+    {
+      if (my_rank > k % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+  else
+    {
+      if (my_rank > (k - 1) % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+
+  if (my_rank == k % p && s != 0)
+    {
+      for (int column = 0; column < max_columns - 1; column++)
+        {
+          subtract_e_from_block (a + column * n * m + (column * p + my_rank) * m * m, m);
+        }
+      subtract_e_from_block (a + (max_columns - 1) * n * m + ((max_columns - 1) * p + my_rank) * m * s, s);
+    }
+  else
+    {
+      for (int column = 0; column < max_columns; column++)
+        {
+          subtract_e_from_block (a + column * n * m + (column * p + my_rank) * m * m, m);
+        }
+    }
+}
+
+void
+subtract_e_from_block (double *a, int n)
+{
+  for (int i = 0; i < n; i++)
+    a[i * n + i] -= 1.;
+}
+
+double
+mpi_matrix_norm (double *a, int n, int m, int p, int my_rank, int max_columns_global)
+{
+  int k = n / m;
+  int s = n % m;
+
+  int max_columns = max_columns_global;
+
+  if (s != 0)
+    {
+      if (my_rank > k % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+  else
+    {
+      if (my_rank > (k - 1) % p)
+        {
+          max_columns = max_columns_global - 1;
+        }
+      else
+        {
+          max_columns = max_columns_global;
+        }
+    }
+
+  double *summ_of_collumn = new double [m];
+
+  double tmp_max = 0, max = 0;
 
 
+  if (my_rank == k % p && s != 0)
+    {
+      for (int column = 0; column < max_columns - 1; column++)
+        {
+          memset (summ_of_collumn, 0, m * sizeof (double));
+          for (int j = 0; j < m; j++)
+            {
+              for (int i = 0; i < m * k; i++)
+                {
+                  summ_of_collumn[j] += fabs (*(a + column * n * m + (i / m) * m * m + j * m + (i % m)));
+                }
+              for (int i = m * k; i < n; i++)
+                {
+                  summ_of_collumn[j] += fabs (*(a + column * n * m + (i / m) * m * m + j * s + (i % m)));
+                }
+            }
+          tmp_max = summ_of_collumn[0];
+          for (int j = 1; j < m; j++)
+            if (tmp_max < summ_of_collumn[j])
+              tmp_max = summ_of_collumn[j];
+        }
+      memset (summ_of_collumn, 0, m * sizeof (double));
+      for (int j = 0; j < s; j++)
+        {
+          for (int i = 0; i < m * k; i++)
+            {
+              summ_of_collumn[j] += fabs (*(a + (max_columns - 1) * n * m + (i / m) * m * s + j * m + (i % m)));
+            }
+          for (int i = m * k; i < n; i++)
+            {
+              summ_of_collumn[j] += fabs (*(a + (max_columns - 1) * n * m + (i / m) * m * s + j * s + (i % m)));
+            }
+        }
+      tmp_max = summ_of_collumn[0];
+      for (int j = 1; j < s; j++)
+        if (tmp_max < summ_of_collumn[j])
+          tmp_max = summ_of_collumn[j];
+    }
+  else
+    {
+      for (int column = 0; column < max_columns; column++)
+        {
+          memset (summ_of_collumn, 0, m * sizeof (double));
+          for (int j = 0; j < m; j++)
+            {
+              for (int i = 0; i < m * k; i++)
+                {
+                  summ_of_collumn[j] += fabs (*(a + column * n * m + (i / m) * m * m + j * m + (i % m)));
+                }
+              if (s != 0)
+                {
+                  for (int i = m * k; i < n; i++)
+                    {
+                      summ_of_collumn[j] += fabs (*(a + column * n * m + (i / m) * m * m + j * s + (i % m)));
+                    }
+                }
+            }
+          tmp_max = summ_of_collumn[0];
+          for (int j = 1; j < m; j++)
+            if (tmp_max < summ_of_collumn[j])
+              {
+                tmp_max = summ_of_collumn[j];
+              }
+        }
+    }
+
+  MPI_Allreduce (&tmp_max, &max, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+
+  delete [] summ_of_collumn;
+
+  return max;
+}
 
 
 
