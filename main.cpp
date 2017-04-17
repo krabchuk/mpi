@@ -164,9 +164,9 @@ main (int argc, char *argv[])
       MPI_Allreduce (&error, &global_error, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
       if (global_error)
         {
-          delete a;
-          delete b;
-          delete c;
+          delete [] a;
+          delete [] b;
+          delete [] c;
           MPI_Finalize ();
           return 0;
         }
@@ -178,7 +178,7 @@ main (int argc, char *argv[])
 
   norm = mpi_matrix_norm (a, n, m, p, my_rank, max_columns);
 
-  //mpi_matrix_print (a, n, m, p, my_rank, max_columns);
+  mpi_matrix_print (a, n, m, p, my_rank, max_columns);
 
   struct timeval start, finish;
 
@@ -208,7 +208,17 @@ main (int argc, char *argv[])
       printf ("Elapsed: %f\n", time);
     }
 
-  //mpi_matrix_print (b, n, m, p, my_rank, max_columns);
+  if (p == 1 && n > 1000)
+    {
+      delete [] a;
+      delete [] b;
+      delete [] c;
+      MPI_Finalize ();
+
+      return 0;
+    }
+
+  mpi_matrix_print (b, n, m, p, my_rank, max_columns);
 
   if (argc == 4)
     {

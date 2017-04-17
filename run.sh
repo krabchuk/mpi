@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for ((i = 2; i < 20; i++))
+for ((i = 2; i < 10; i++))
 do 
     for ((j = 1; j <= i; j++))
     do

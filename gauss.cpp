@@ -492,13 +492,13 @@ gauss (double *a, double *b, int n, int *pos_j, double norm)
     }
   for (i = 0; i < n; i++)
   {
-      max = fabs(a[i + pos_j[i] * n]);
+      max = fabs(a[i + i * n]);
       indMax = i;
       for (j = i + 1; j < n; ++j)
         {
-          if (max < fabs(a[i + pos_j[j] * n]))
+          if (max < fabs(a[i + j * n]))
             {
-              max = fabs(a[i + pos_j[j] * n]);
+              max = fabs(a[i + j * n]);
               indMax = j;
             }
         }
@@ -506,16 +506,25 @@ gauss (double *a, double *b, int n, int *pos_j, double norm)
       swap = pos_j[i];
       pos_j[i] = pos_j[indMax];
       pos_j[indMax] = swap;
-      if (fabs(a[i + pos_j[i] * n]) < norm * 1e-15)
+
+      double swap_tmp;
+      for (int ind = 0; ind < n; ind++)
+        {
+          swap_tmp = a[ind + i * n];
+          a[ind + i * n] = a[ind + indMax * n];
+          a[ind + indMax * n] = swap_tmp;
+        }
+
+      if (fabs(a[i + i * n]) < norm * 1e-15)
         {
           return 0;
         }
 
-      tmp = 1.0 / a[i + pos_j[i] * n];
+      tmp = 1.0 / a[i + i * n];
 
       for (j = i; j < n; j++)
         {
-          a[i + pos_j[j] * n] *= tmp;
+          a[i + j * n] *= tmp;
         }
 
       for (j = 0; j < n; j++)
@@ -525,11 +534,11 @@ gauss (double *a, double *b, int n, int *pos_j, double norm)
 
       for (j = i + 1; j < n; j++)
         {
-          tmp = a[j + pos_j[i] * n];
+          tmp = a[j + i * n];
 
           for (k = i; k < n; k++)
             {
-              a[j + pos_j[k] * n] -= a[i + pos_j[k] * n] * tmp;
+              a[j + k * n] -= a[i + k * n] * tmp;
             }
 
           for (k = 0; k < n; k++)
@@ -546,7 +555,7 @@ gauss (double *a, double *b, int n, int *pos_j, double norm)
           tmp = b[i + k * n];
           for (j = i + 1; j < n; ++j)
             {
-              tmp -= a[i + pos_j[j] * n] * b[j + k * n];
+              tmp -= a[i + j * n] * b[j + k * n];
             }
           b[i + k * n] = tmp;
         }
@@ -1193,10 +1202,17 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
 
       int start = 0;
 
-      if (my_rank >= iter % p)
+      if (my_rank > iter % p)
         start = iter / p;
       else
         start = (iter / p) + 1;
+
+      int finish;
+
+      if (my_rank <= iter % p)
+        finish = iter / p + 1;
+      else
+        finish = iter / p;
 
 
       if (my_rank == k % p && s != 0)
@@ -1222,18 +1238,21 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
 
       if (my_rank == k % p && s != 0)
         {
-          for (int j = 0; j < max_columns - 1/*= start*/; j++)
+          int j = 0;
+          for (; j < max_columns - 1 && j < finish/*= start*/; j++)
             {
               matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
               cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
             }
-          matrix_multiply (test_b, b + (max_columns - 1) * n * m + iter * m * s, test_block, m, m, s);
-          cpy_matrix (b + (max_columns - 1) * n * m + iter * m * s, test_block, m, s);
-
+          if (j == max_columns - 1)
+            {
+              matrix_multiply (test_b, b + (max_columns - 1) * n * m + iter * m * s, test_block, m, m, s);
+              cpy_matrix (b + (max_columns - 1) * n * m + iter * m * s, test_block, m, s);
+            }
         }
       else
         {
-          for (int j = 0; j < max_columns/*= start*/; j++)
+          for (int j = 0; j < max_columns && j < finish/*= start*/; j++)
             {
               matrix_multiply (test_b, b + j * n * m + iter * m * m, test_block, m, m, m);
               cpy_matrix (b + j * n * m + iter * m * m, test_block, m, m);
@@ -1256,13 +1275,17 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
               matrix_multiply (test_block, a + (max_columns - 1) * n * m + iter * m * s, test_b, m, m, s);
               subtraction_from_matrix_a_matrix_b (a + (max_columns - 1) * n * m + j * m * s, test_b, m, s);
 
-              for (int column = 0; column < max_columns - 1/*= start*/; column++)
+              int column = 0;
+              for (; column < max_columns - 1 && column < finish/*= start*/; column++)
                 {
                   matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, m, m, m);
                   subtraction_from_matrix_a_matrix_b (b + column * n * m + j * m * m, test_b, m, m);
                 }
-              matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, m, m, s);
-              subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + j * m * s, test_b, m, s);
+              if (column == max_columns - 1)
+                {
+                  matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, m, m, s);
+                  subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + j * m * s, test_b, m, s);
+                }
             }
 
           copy_massive (test_block, min_column + k * m * m, s * m);
@@ -1275,14 +1298,17 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
           matrix_multiply (test_block, a + (max_columns - 1) * n * m + iter * m * s, test_b, s, m, s);
           subtraction_from_matrix_a_matrix_b (a + (max_columns - 1) * n * m + k * m * s, test_b, s, s);
 
-          for (int column = 0; column < max_columns - 1/*= start*/; column++)
+          int column = 0;
+          for (; column < max_columns - 1 && column < finish/*= start*/; column++)
             {
               matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, s, m, m);
               subtraction_from_matrix_a_matrix_b (b + column * n * m + k * m * m, test_b, s, m);
             }
-          matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, s, m, s);
-          subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + k * m * s, test_b, s, s);
-
+          if (column == max_columns - 1)
+            {
+              matrix_multiply (test_block, b + (max_columns - 1) * n * m + iter * m * s, test_b, s, m, s);
+              subtraction_from_matrix_a_matrix_b (b + (max_columns - 1) * n * m + k * m * s, test_b, s, s);
+            }
         }
       else
         {
@@ -1296,7 +1322,7 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
                   subtraction_from_matrix_a_matrix_b (a + column * n * m + j * m * m, test_b, m, m);
                 }
 
-              for (int column = 0; column < max_columns/*= start*/; column++)
+              for (int column = 0; column < max_columns && column < finish/*= start*/; column++)
                 {
                   matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, m, m, m);
                   subtraction_from_matrix_a_matrix_b (b + column * n * m + j * m * m, test_b, m, m);
@@ -1313,7 +1339,7 @@ int gauss_mpi (double *a, double *b, int n, int m, int my_rank, int p, int max_c
                   subtraction_from_matrix_a_matrix_b (a + column * n * m + k * m * m, test_b, s, m);
                 }
 
-              for (int column = 0; column < max_columns/*= start*/; column++)
+              for (int column = 0; column < max_columns && column < finish/*= start*/; column++)
                 {
                   matrix_multiply (test_block, b + column * n * m + iter * m * m, test_b, s, m, m);
                   subtraction_from_matrix_a_matrix_b (b + column * n * m + k * m * m, test_b, s, m);
